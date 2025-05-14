@@ -9,82 +9,81 @@ public class Servidor {
     private static final String HOST = "localhost";
     private ServerSocket serverSocket;
 
-    // Método connectar que abre la conexión con serverSocket y retorna un socket
     public Socket connecta() {
         Socket clientSocket = null;
         try {
             serverSocket = new ServerSocket(PORT);
-            System.out.println("Acceptant connexions en -> " + HOST + ":" + PORT);
-            System.out.println("Esperant connexio... ");
-
+            System.out.println("Acceptant connexions en -> " + HOST + ": " + PORT);
+            System.out.println("Esperant connexio...");
             clientSocket = serverSocket.accept();
             System.out.println("Connexio acceptada: " + clientSocket.getInetAddress());
-
         } catch (IOException e) {
-            System.err.println("Error al iniciar el servidor: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error iniciant el servidor: " + e.getMessage());
         }
         return clientSocket;
     }
 
-    // Método tancaConnexio que cierra el socket recibido como parámetro
-    public void tancarConnexio(Socket socket) {
+    public void enviarFitxers(Socket clientSocket) {
         try {
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
-                System.out.println("Connexió amb el client tancada.");
-            }
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                serverSocket.close();
-                System.out.println("Servidor aturat.");
-            }
-        } catch (IOException e) {
-            System.err.println("Error al aturar el servidor: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Método enviarFixers que recibe del cliente el nombre del archivo a enviar,
-     * lee su contenido y lo envía como byte[]
-     */
-    public void enviarFixers(Socket clientSocket) {
-        try {
-
-            ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
             ObjectOutputStream out = new ObjectOutputStream(clientSocket.getOutputStream());
+            ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream());
 
-            String nomFitxer = (String) in.readObject();
-            System.out.println("El client ha sol·licitat el fitxer: " + nomFitxer);
+            while (true) {
+                System.out.println("Esperant el nom del fitxer del client...");
+                String nomFitxer = (String) in.readObject();
 
-            // Crear y cargar el archivo
-            Fitxer fitxer = new Fitxer(nomFitxer);
-            fitxer.getContingut();
+                if (nomFitxer == null || nomFitxer.trim().isEmpty()) {
+                    System.out.println("Nom del fitxer buit o nul. Sortint...");
+                    System.out.println("Tancant conexió amb el client: " + clientSocket.getInetAddress());
+                    break;
+                }
 
-            // Comprobar si el archivo existe
-            if (fitxer.getContingut() != null) {
-                // Enviar el contenido del archivo
-                out.writeObject(fitxer.getContingut());
-                System.out.println("Fitxer enviat: " + nomFitxer + " (" + fitxer.getContingut().length + " bytes)");
-            } else {
-                // Si el archivo no existe, enviar un array vacío
-                out.writeObject(new byte[0]);
-                System.out.println("Error: El fitxer no existeix o no es pot llegir");
+                if (nomFitxer.equalsIgnoreCase("sortir")) {
+                    System.out.println("Sortint");
+                    System.out.println("Tancant conexió amb el client: " + clientSocket.getInetAddress());
+                    break;
+                }
+
+                System.out.println("Nomfitxer rebut: " + nomFitxer);
+                Fitxer fitxer = new Fitxer(nomFitxer);
+                byte[] contingut = fitxer.getContingut();
+
+                if (contingut != null) {
+                    System.out.println("Contingut del fitxer a enviar: " + contingut.length + " bytes");
+                    out.writeObject(contingut);
+                    System.out.println("Fitxer enviat al client: " + nomFitxer);
+                } else {
+                    out.writeObject(new byte[0]);
+                    System.out.println("Error llegint el fitxer del client: null");
+                }
             }
 
             out.close();
             in.close();
 
         } catch (IOException | ClassNotFoundException e) {
-            System.err.println("Error al enviar el fitxer: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error en enviarFitxers: " + e.getMessage());
+        }
+    }
+
+    public void tancarConnexio(Socket socket) {
+        try {
+            if (socket != null && !socket.isClosed()) {
+                System.out.println("Tancant connexió amb el client: " + socket.getInetAddress());
+                socket.close();
+            }
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            System.err.println("Error tancant connexió: " + e.getMessage());
         }
     }
 
     public static void main(String[] args) {
         Servidor servidor = new Servidor();
         Socket clientSocket = servidor.connecta();
-        servidor.enviarFixers(clientSocket);
+        servidor.enviarFitxers(clientSocket);
         servidor.tancarConnexio(clientSocket);
     }
 }
