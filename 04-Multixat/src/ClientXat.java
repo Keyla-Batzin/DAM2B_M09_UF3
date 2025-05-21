@@ -4,97 +4,136 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.Scanner;
 
-public class ClientXat {
+public class ClientXat implements Runnable {
+    // Constantes
+    private static final int PORT = 9999;
+    private static final String HOST = "localhost";
+    
+    // Atributs
     private Socket socket;
-    private ObjectOutputStream out;
-    private ObjectInputStream in;
-    private boolean sortir = false;
-
+    private ObjectOutputStream oos;
+    private ObjectInputStream ois;
+    private boolean sortir;
+    
+    // Constructor
+    public ClientXat() {
+        this.sortir = false;
+    }
+    
+    // Método para conectar con el servidor
     public void connecta() {
         try {
-            socket = new Socket("localhost", 9999);
-            out = new ObjectOutputStream(socket.getOutputStream());
-            System.out.println("Client connectat a " + socket.getLocalPort());
+            // Abrir el socket al servidor
+            socket = new Socket(HOST, PORT);
+            System.out.println("Client connectat a " + HOST + ":" + PORT);
+            
+            // Inicializar streams
+            oos = new ObjectOutputStream(socket.getOutputStream());
             System.out.println("Flux d'entrada i sortida creat.");
         } catch (IOException e) {
-            System.out.println("Error en la connexió.");
-            sortir = true;
+            System.err.println("Error al connectar amb el servidor: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
     }
-
+    
+    // Método para enviar mensaje
     public void enviarMissatge(String missatge) {
         try {
-            if (out != null) {
-                out.writeObject(missatge);
-                out.flush();
+            if (oos != null) {
                 System.out.println("Enviant missatge: " + missatge);
+                oos.writeObject(missatge);
+                oos.flush();
             } else {
-                System.out.println("out null. Sortint...");
+                System.out.println("oos null. Sortint...");
                 sortir = true;
             }
         } catch (IOException e) {
-            System.out.println("Error enviant missatge.");
+            System.err.println("Error al enviar missatge: " + e.getMessage());
             sortir = true;
         }
     }
-
+    
+    // Método para cerrar cliente
     public void tancarClient() {
+        System.out.println("Tancant client...");
         try {
-            if (in != null) {
-                in.close();
+            if (ois != null) {
+                ois.close();
                 System.out.println("Flux d'entrada tancat.");
             }
-            if (out != null) {
-                out.close();
+            if (oos != null) {
+                oos.close();
                 System.out.println("Flux de sortida tancat.");
             }
-            if (socket != null) {
+            if (socket != null && !socket.isClosed()) {
                 socket.close();
-                System.out.println("Tancant client...");
             }
         } catch (IOException e) {
-            System.out.println("Error tancant el client.");
+            System.err.println("Error al tancar el client: " + e.getMessage());
         }
     }
-
-    public void executa() {
+    
+    // Método de ejecución como hilo para recibir mensajes
+    @Override
+    public void run() {
         try {
-            in = new ObjectInputStream(socket.getInputStream());
+            // Inicializar el ObjectInputStream
+            ois = new ObjectInputStream(socket.getInputStream());
             System.out.println("DEBUG: Iniciant rebuda de missatges...");
+            
             while (!sortir) {
-                String missatgeCru = (String) in.readObject();
+                // Recibir mensaje
+                String missatgeCru = (String) ois.readObject();
+                
+                // Extraer código
                 String codi = Missatge.getCodiMissatge(missatgeCru);
+                
+                if (codi == null) {
+                    continue;
+                }
+                
+                // Obtener partes del mensaje
                 String[] parts = Missatge.getPartsMissatge(missatgeCru);
-
-                if (codi == null) continue;
-
+                
                 switch (codi) {
                     case Missatge.CODI_SORTIR_TOTS:
+                        // Activar flag de salida y salir del programa
                         sortir = true;
+                        System.out.println("El servidor ha tancat el xat. Sortint...");
+                        tancarClient();
+                        System.exit(0);
                         break;
+                        
                     case Missatge.CODI_MSG_PERSONAL:
-                        if (parts.length >= 3) {
+                        // Mostrar mensaje personal
+                        if (parts.length > 2) {
                             String remitent = parts[1];
-                            String msg = parts[2];
-                            System.out.println("Missatge de (" + remitent + "): " + msg);
+                            String missatge = parts[2];
+                            System.out.println("Missatge de (" + remitent + "): " + missatge);
                         }
                         break;
+                        
                     case Missatge.CODI_MSG_GRUP:
-                        if (parts.length >= 2) {
-                            System.out.println("Grup: " + parts[1]);
+                        // Mostrar mensaje de grupo
+                        if (parts.length > 1) {
+                            System.out.println("Missatge de grup: " + parts[1]);
                         }
                         break;
+                        
                     default:
-                        System.out.println("Error: codi no reconegut.");
+                        System.out.println("Error: codi de missatge desconegut: " + codi);
+                        break;
                 }
             }
-        } catch (Exception e) {
+        } catch (IOException | ClassNotFoundException e) {
             System.out.println("Error rebent missatge. Sortint...");
         } finally {
             tancarClient();
         }
     }
-
+    
+    // Método para mostrar ayuda
     public void ajuda() {
         System.out.println("---------------------");
         System.out.println("Comandes disponibles:");
@@ -105,64 +144,112 @@ public class ClientXat {
         System.out.println("5.- Finalitzar tothom");
         System.out.println("---------------------");
     }
-
-    public String getLinea(Scanner sc, String missatge, boolean obligatori) {
-        String linia;
+    
+    // Método para leer línea de consola
+    public String getLinea(Scanner scanner, String missatge, boolean obligatori) {
+        String linea = "";
+        
         do {
             System.out.print(missatge);
-            linia = sc.nextLine();
-            if (!obligatori || !linia.trim().isEmpty()) {
+            linea = scanner.nextLine().trim();
+            
+            if (linea.isEmpty() && obligatori) {
+                System.out.println("Aquest camp és obligatori.");
+            } else {
                 break;
             }
-        } while (true);
-        return linia.trim();
+        } while (obligatori);
+        
+        return linea;
     }
-
+    
     public static void main(String[] args) {
-        ClientXat client = new ClientXat();
-        Scanner sc = new Scanner(System.in);
-        client.connecta();
-
-        Thread t = new Thread(() -> client.executa());
-        t.start();
-
-        client.ajuda();
-
-        while (!client.sortir) {
-            String opcio = sc.nextLine().trim();
-
-            if (opcio.isEmpty()) {
-                client.enviarMissatge(Missatge.getMissatgeSortirClient("Adéu"));
-                client.sortir = true;
-            } else {
+        ClientXat clientXat = new ClientXat();
+        
+        // Conectar al servidor
+        clientXat.connecta();
+        
+        // Iniciar hilo para leer mensajes
+        Thread thread = new Thread(clientXat);
+        thread.start();
+        
+        // Mostrar ayuda
+        clientXat.ajuda();
+        
+        Scanner scanner = new Scanner(System.in);
+        
+        while (!clientXat.sortir) {
+            String linea = scanner.nextLine().trim();
+            
+            if (linea.isEmpty()) {
+                clientXat.sortir = true;
+                clientXat.enviarMissatge(Missatge.getMissatgeSortirClient("Adéu"));
+                continue;
+            }
+            
+            try {
+                int opcio = Integer.parseInt(linea);
+                
                 switch (opcio) {
-                    case "1":
-                        String nom = client.getLinea(sc, "Introdueix el nom: ", true);
-                        client.enviarMissatge(Missatge.getMissatgeConectar(nom));
+                    case 1:
+                        // Conectar al servidor
+                        String nom = clientXat.getLinea(scanner, "Introdueix el nom: ", true);
+                        clientXat.enviarMissatge(Missatge.getMissatgeConectar(nom));
                         break;
-                    case "2":
-                        String desti = client.getLinea(sc, "Destinatari:: ", true);
-                        String text = client.getLinea(sc, "Missatge a enviar: ", true);
-                        client.enviarMissatge(Missatge.getMissatgePersonal(desti, text));
+                        
+                    case 2:
+                        // Enviar mensaje personal
+                        String destinatari = clientXat.getLinea(scanner, "Destinatari:: ", true);
+                        String missatgePersonal = clientXat.getLinea(scanner, "Missatge a enviar: ", true);
+                        clientXat.enviarMissatge(Missatge.getMissatgePersonal(destinatari, missatgePersonal));
                         break;
-                    case "3":
-                        String msg = client.getLinea(sc, "Missatge al grup: ", true);
-                        client.enviarMissatge(Missatge.getMissatgeGrup(msg));
+                        
+                    case 3:
+                        // Enviar mensaje al grupo
+                        String missatgeGrup = clientXat.getLinea(scanner, "Missatge a enviar: ", true);
+                        clientXat.enviarMissatge(Missatge.getMissatgeGrup(missatgeGrup));
                         break;
-                    case "4":
-                        client.enviarMissatge(Missatge.getMissatgeSortirClient("Adéu"));
-                        client.sortir = true;
+                        
+                    case 4:
+                        // Salir del cliente
+                        clientXat.sortir = true;
+                        clientXat.enviarMissatge(Missatge.getMissatgeSortirClient("Adéu"));
                         break;
-                    case "5":
-                        client.enviarMissatge(Missatge.getMissatgeSortirTots("Adéu"));
-                        client.sortir = true;
+                        
+                    case 5:
+                        // Finalizar todos
+                        clientXat.sortir = true;
+                        clientXat.enviarMissatge(Missatge.getMissatgeSortirTots("Adéu"));
+                        // Salir inmediatamente tras enviar el mensaje
+                        System.exit(0);
                         break;
+                        
                     default:
                         System.out.println("Opció no vàlida.");
+                        break;
                 }
+                
+                // Mostrar ayuda después de cada comando
+                if (!clientXat.sortir) {
+                    clientXat.ajuda();
+                }
+                
+            } catch (NumberFormatException e) {
+                System.out.println("Format incorrecte. Introdueix un número.");
             }
         }
-
-        sc.close();
+        
+        // Cerrar scanner
+        scanner.close();
+        
+        // Esperar a que termine el hilo de lectura
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            System.err.println("Error esperant fil de lectura: " + e.getMessage());
+        }
+        
+        // Limpiar y salir
+        System.exit(0);
     }
 }
