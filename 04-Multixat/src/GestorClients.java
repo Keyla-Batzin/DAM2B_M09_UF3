@@ -12,7 +12,7 @@ public class GestorClients implements Runnable {
     private String nom;
     private boolean sortir;
     
-    // Constructor con Socket y ServidorXat
+   
     public GestorClients(Socket client, ServidorXat servidorXat) {
         this.client = client;
         this.servidorXat = servidorXat;
@@ -28,12 +28,11 @@ public class GestorClients implements Runnable {
         }
     }
     
-    // Getter para el nombre
+
     public String getNom() {
         return nom;
     }
     
-    // Método de ejecución como hilo
     @Override
     public void run() {
         try {
